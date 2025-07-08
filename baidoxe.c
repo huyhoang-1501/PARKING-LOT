@@ -1,0 +1,110 @@
+#include <16F887.h>
+#fuses HS
+#use delay(clock=20000000) 
+#include <lcd.c>
+
+#define IR_IN PIN_B0
+#define IR_OUT PIN_B1
+#define RESET_BUTTON PIN_B2
+#define BUZZER PIN_C0
+#define LED_FULL PIN_C1
+#define MAX_CARS 10
+
+int8 car_count = 0;
+int1 is_full = 0;
+
+void display_event(int1 is_exit) {
+   lcd_gotoxy(1, 2);
+   lcd_putc(is_exit ? "Ra" : "Vao");
+   delay_ms(1000);
+}
+
+void display_reset_message() {
+   lcd_gotoxy(1, 1);
+   lcd_putc("Reset OK");
+   lcd_gotoxy(1, 2);
+   lcd_putc("So xe: 0");
+   delay_ms(1000);
+}
+
+void set_servo_angle(int8 angle) {
+   int16 duty = 1000 + (angle * 1000 / 180);
+   set_pwm1_duty(duty);
+}
+
+#int_rb
+void rb_isr(void) {
+   delay_ms(50);
+   if(!input(IR_IN)) {
+      if(car_count < MAX_CARS) {
+         car_count++;
+         set_servo_angle(90);
+         delay_ms(1000);
+         set_servo_angle(0);
+         write_eeprom(0, car_count);
+         display_event(0); 
+      }
+   }
+   if(!input(IR_OUT)) {
+      if(car_count > 0) {
+         car_count--;
+         set_servo_angle(90);
+         delay_ms(1000);
+         set_servo_angle(0);
+         write_eeprom(0, car_count);
+         display_event(1); 
+      }
+   }
+   if(!input(RESET_BUTTON)) {
+      car_count = 0;
+      write_eeprom(0, car_count);
+      display_reset_message(); 
+   }
+   clear_interrupt(INT_RB);
+}
+
+void init(void) {
+   set_tris_b(0x07); 
+   set_tris_c(0x00); 
+   set_tris_d(0x00); 
+   output_b(0x00);
+   output_c(0x00);
+   output_d(0x00);
+   
+   lcd_init();
+   delay_ms(100); 
+   setup_ccp1(CCP_PWM);
+   setup_timer_2(T2_DIV_BY_16, 249, 1); // Ði?u ch?nh cho 20MHz
+   set_pwm1_duty(1000);
+   
+   enable_interrupts(INT_RB);
+   enable_interrupts(GLOBAL);
+   
+   car_count = read_eeprom(0);
+}
+
+void main(void) {
+   init();
+   char buffer[16];
+   
+   while(TRUE) {
+      lcd_gotoxy(1, 1);
+      sprintf(buffer, "So xe: %d", car_count);
+      lcd_putc(buffer);
+      
+      if(car_count >= MAX_CARS) {
+         is_full = 1;
+         output_high(BUZZER);
+         output_high(LED_FULL);
+         lcd_gotoxy(1, 2);
+         lcd_putc("BAI DAY");
+      } else {
+         is_full = 0;
+         output_low(BUZZER);
+         output_low(LED_FULL);
+         lcd_gotoxy(1, 2);
+         lcd_putc("CON CHO");
+      }
+      delay_ms(200);
+   }
+}

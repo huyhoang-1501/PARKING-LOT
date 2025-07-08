@@ -1,0 +1,21 @@
+[PROJECT]
+Target=baidoxe.hex
+Processor_Text=PIC16F887
+CCSVersion=5.015
+Compiler=PCM
+[Target Data]
+FileList=baidoxe.c
+[Directories]
+Include=C:\Program Files (x86)\PICC\Devices\;C:\Program Files (x86)\PICC\Drivers\;C:\Program Files (x86)\PICC\Drivers\C:\Program Files (x86)\PICC\Devices\
+[baidoxe.c]
+Type=4
+[mru-list]
+1=baidoxe.c
+[Opened Files]
+1=..\Embedded system\library_linking\libha.h
+2=baidoxe.c
+3=C:\Program Files (x86)\PICC\Drivers\lcd.c
+4=
+[Units]
+Count=1
+1=baidoxe (main)

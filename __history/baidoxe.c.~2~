@@ -1,0 +1,152 @@
+#include <16F887.h>
+#fuses HS, NOWDT, NOPROTECT, NOLVP, PUT, BROWNOUT
+#use delay(clock=4000000)
+#use i2c(master, sda=PIN_C4, scl=PIN_C3)
+#include <lcd.c>
+#include <i2c.h> // Thu vi?n I2C c?a CCS
+
+#define IR_IN PIN_B0
+#define IR_OUT PIN_B1
+#define RESET_BUTTON PIN_B2
+#define BUZZER PIN_C0
+#define LED_FULL PIN_C1
+#define MAX_CARS 10
+#define EVENT_LOG_SIZE 5 // Luu 5 s? ki?n
+
+int8 car_count = 0;
+int1 is_full = 0;
+int8 event_index = 0; // Ch? s? s? ki?n hi?n t?i trong EEPROM
+
+// Hàm d?c th?i gian t? DS1307
+void read_rtc(int8 *hour, int8 *min, int8 *sec) {
+   i2c_start();
+   i2c_write(0xD0); // Ð?a ch? DS1307 (write)
+   i2c_write(0x00); // Thanh ghi giây
+   i2c_start();
+   i2c_write(0xD1); // Ð?a ch? DS1307 (read)
+   *sec = i2c_read(1); // Ð?c giây
+   *min = i2c_read(1); // Ð?c phút
+   *hour = i2c_read(0); // Ð?c gi?
+   i2c_stop();
+}
+
+// Hàm luu s? ki?n vào EEPROM
+void log_event(int8 hour, int8 min, int8 sec, int1 is_exit) {
+   int8 address = 0x10 + (event_index * 4); // M?i s? ki?n 4 byte
+   write_eeprom(address, hour);
+   write_eeprom(address + 1, min);
+   write_eeprom(address + 2, sec);
+   write_eeprom(address + 3, is_exit);
+   event_index = (event_index + 1) % EVENT_LOG_SIZE; // Vòng l?p 5 s? ki?n
+}
+
+// Hàm hi?n th? th?i gian s? ki?n trên LCD
+void display_event_time(int8 hour, int8 min, int8 sec, int1 is_exit) {
+   char buffer[16];
+   lcd_gotoxy(1, 2);
+   sprintf(buffer, "%s %02d:%02d:%02d", is_exit ? "Ra" : "Vao", hour, min, sec);
+   lcd_putc(buffer);
+   delay_ms(3000); // Hi?n th? 3 giây
+}
+
+// Hàm hi?n th? l?ch s? s? ki?n
+void display_event_log() {
+   char buffer[16];
+   int8 i, address, hour, min, sec, is_exit;
+   for(i = 0; i < EVENT_LOG_SIZE; i++) {
+      address = 0x10 + (i * 4);
+      hour = read_eeprom(address);
+      min = read_eeprom(address + 1);
+      sec = read_eeprom(address + 2);
+      is_exit = read_eeprom(address + 3);
+      lcd_gotoxy(1, 1);
+      sprintf(buffer, "Log %d: %02d:%02d:%02d", i + 1, hour, min, sec);
+      lcd_putc(buffer);
+      lcd_gotoxy(1, 2);
+      lcd_putc(is_exit ? "Ra" : "Vao");
+      delay_ms(2000); // Hi?n th? m?i s? ki?n 2 giây
+   }
+}
+
+void set_servo_angle(int8 angle) {
+   int16 duty = 1000 + (angle * 1000 / 180);
+   set_pwm1_duty(duty);
+}
+
+#int_rb
+void rb_isr(void) {
+   int8 hour, min, sec;
+   if(!input(IR_IN)) {
+      if(car_count < MAX_CARS) {
+         car_count++;
+         set_servo_angle(90);
+         delay_ms(2000);
+         set_servo_angle(0);
+         write_eeprom(0, car_count);
+         read_rtc(&hour, &min, &sec);
+         log_event(hour, min, sec, 0); // Luu s? ki?n vào
+         display_event_time(hour, min, sec, 0); // Hi?n th? th?i gian vào
+      }
+   }
+   if(!input(IR_OUT)) {
+      if(car_count > 0) {
+         car_count--;
+         set_servo_angle(90);
+         delay_ms(2000);
+         set_servo_angle(0);
+         write_eeprom(0, car_count);
+         read_rtc(&hour, &min, &sec);
+         log_event(hour, min, sec, 1); // Luu s? ki?n ra
+         display_event_time(hour, min, sec, 1); // Hi?n th? th?i gian ra
+      }
+   }
+   if(!input(RESET_BUTTON)) {
+      display_event_log(); // Hi?n th? l?ch s? khi nh?n nút
+   }
+   clear_interrupt(INT_RB);
+}
+
+void init(void) {
+   set_tris_b(0x07); // RB0, RB1, RB2 là ngõ vào
+   set_tris_c(0x00); // PORTC là ngõ ra (không dùng UART)
+   set_tris_d(0x00); // PORTD là ngõ ra cho LCD
+   output_b(0x00);
+   output_c(0x00);
+   output_d(0x00);
+   
+   lcd_init();
+   setup_ccp1(CCP_PWM);
+   setup_timer_2(T2_DIV_BY_16, 124, 1);
+   set_pwm1_duty(1000);
+   
+   enable_interrupts(INT_RB);
+   enable_interrupts(GLOBAL);
+   
+   car_count = read_eeprom(0);
+}
+
+void main(void) {
+   init();
+   char buffer[16];
+   
+   while(TRUE) {
+      lcd_gotoxy(1, 1);
+      sprintf(buffer, "So xe: %d", car_count);
+      lcd_putc(buffer);
+      
+      if(car_count >= MAX_CARS) {
+         is_full = 1;
+         output_high(BUZZER);
+         output_high(LED_FULL);
+         lcd_gotoxy(1, 2);
+         lcd_putc("BAI DAY");
+      } else {
+         is_full = 0;
+         output_low(BUZZER);
+         output_low(LED_FULL);
+         lcd_gotoxy(1, 2);
+         lcd_putc("CON CHO");
+      }
+      delay_ms(500);
+   }
+}

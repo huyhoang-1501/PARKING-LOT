@@ -1,0 +1,7 @@
+>>> Warning 216 "baidoxe.c" Line 110(1,2): Interrupts disabled during call to prevent re-entrancy:  (@delay_ms1)
+>>> Warning 216 "baidoxe.c" Line 110(1,2): Interrupts disabled during call to prevent re-entrancy:  (lcd_send_byte)
+>>> Warning 216 "baidoxe.c" Line 110(1,2): Interrupts disabled during call to prevent re-entrancy:  (lcd_gotoxy)
+>>> Warning 216 "baidoxe.c" Line 110(1,2): Interrupts disabled during call to prevent re-entrancy:  (lcd_putc)
+      Memory usage:   ROM=19%      RAM=6% - 17%
+      0 Errors,  4 Warnings.
+Build Successful.
